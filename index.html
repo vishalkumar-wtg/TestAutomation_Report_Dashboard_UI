@@ -65,7 +65,7 @@
         const config = {
             // General settings
             pagination: {
-                buildsPerPage: 20
+                buildsPerPage: 5
             },
             // Applications and their components
             applications: [
@@ -93,6 +93,16 @@
                         { folderName: "OPEN_USER_GROUP", displayName: "Open User Group" },
                         { folderName: "HYBRID_USER_GROUP", displayName: "Hybrid User Group" },
                         { folderName: "ADMIN", displayName: "Administration" },
+                        { folderName: "CUSTOM", displayName: "Custom" }
+                    ]
+                },
+                {
+                    folderName: "wi_efinance",
+                    displayName: "Web Interface, MePO and ePOTrader",
+                    components: [
+                        { folderName: "EPO", displayName: "ePO" },
+                        { folderName: "MEPO", displayName: "MePO" },
+                        { folderName: "WI", displayName: "Web Interface" },
                         { folderName: "CUSTOM", displayName: "Custom" }
                     ]
                 }
