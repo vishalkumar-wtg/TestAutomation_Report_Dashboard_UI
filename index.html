@@ -354,8 +354,19 @@
                 // Initialize result containers
                 let testOutputComponents = [];
                 let reportsComponents = [];
+
+                // First try to get summary.json
+                let summaryData = null;
+                try {
+                    const summaryResponse = await fetch(`${buildPath}/summary.json`);
+                    if (summaryResponse.ok) {
+                        summaryData = await summaryResponse.json(); // parse summary.json if it exists
+                    }
+                } catch (e) {
+                    // Ignore errors silently if summary.json is missing
+                }
                 
-                // First try to get test-output directory
+                // Then try to get test-output directory
                 try {
                     const testOutputContents = await fetchDirectoryContents(testOutputPath);
                     
@@ -430,47 +441,83 @@
                 loadingIndicator.style.display = 'none';
                 
                 // Set up tabs if we have content
-                if (testOutputComponents.length > 0 || reportsComponents.length > 0) {
+                if (summaryData != null || testOutputComponents.length > 0 || reportsComponents.length > 0) {
                     // Sort components by name for consistent ordering
                     testOutputComponents.sort((a, b) => a.displayName.localeCompare(b.displayName));
                     reportsComponents.sort((a, b) => a.displayName.localeCompare(b.displayName));
-                    
+
+                    // Determine which tab should be active (priority order: summary > testOutput > reports)
+                    let activeTab = null;
+                    if (summaryData != null) {
+                        activeTab = 'summary';
+                    } else if (testOutputComponents.length > 0) {
+                        activeTab = 'testoutput';
+                    } else if (reportsComponents.length > 0) {
+                        activeTab = 'reports';
+                    }
+
+                    // Helper function
+                    function isActive(tabName) {
+                        return activeTab === tabName ? 'active' : '';
+                    }
+                    function isAriaSelected(tabName) {
+                        return activeTab === tabName ? 'true' : 'false';
+                    }
+
                     // Create tabs
                     const tabsHTML = `
                         <ul class="nav nav-tabs" role="tablist">
                             <li class="nav-item" role="presentation">
-                                <button class="nav-link ${testOutputComponents.length > 0 ? 'active' : ''}" 
+                                <button class="nav-link ${isActive('summary')}"
+                                    id="${appConfig.folderName}-${buildName}-summary-tab"
+                                    data-bs-toggle="tab"
+                                    data-bs-target="#${appConfig.folderName}-${buildName}-summary"
+                                    type="button"
+                                    role="tab"
+                                    aria-controls="summary"
+                                    aria-selected="${isAriaSelected('summary')}">
+                                    Build Summary
+                                </button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link ${isActive('testoutput')}"
                                     id="${appConfig.folderName}-${buildName}-testoutput-tab" 
                                     data-bs-toggle="tab" 
                                     data-bs-target="#${appConfig.folderName}-${buildName}-testoutput" 
                                     type="button" 
                                     role="tab" 
                                     aria-controls="testoutput" 
-                                    aria-selected="${testOutputComponents.length > 0 ? 'true' : 'false'}">
-                                    Test Output (${testOutputComponents.length})
+                                    aria-selected="${isAriaSelected('testoutput')}">
+                                    Test Report
                                 </button>
                             </li>
                             <li class="nav-item" role="presentation">
-                                <button class="nav-link ${testOutputComponents.length === 0 && reportsComponents.length > 0 ? 'active' : ''}" 
+                                <button class="nav-link ${isActive('reports')}}"
                                     id="${appConfig.folderName}-${buildName}-reports-tab" 
                                     data-bs-toggle="tab" 
                                     data-bs-target="#${appConfig.folderName}-${buildName}-reports" 
                                     type="button" 
                                     role="tab" 
                                     aria-controls="reports" 
-                                    aria-selected="${testOutputComponents.length === 0 && reportsComponents.length > 0 ? 'true' : 'false'}">
-                                    Reports (${reportsComponents.length})
+                                    aria-selected="${isAriaSelected('reports')}}">
+                                    Custom Report
                                 </button>
                             </li>
                         </ul>
                         <div class="tab-content">
-                            <div class="tab-pane fade ${testOutputComponents.length > 0 ? 'show active' : ''}" 
+                            <div class="tab-pane fade ${isActive('summary') ? 'show active' : ''}"
+                                id="${appConfig.folderName}-${buildName}-summary"
+                                role="tabpanel"
+                                aria-labelledby="${appConfig.folderName}-${buildName}-summary-tab">
+                                <div class="row mt-3" id="${appConfig.folderName}-${buildName}-summary-content"></div>
+                            </div>
+                            <div class="tab-pane fade ${isActive('testoutput') ? 'show active' : ''}}"
                                 id="${appConfig.folderName}-${buildName}-testoutput" 
                                 role="tabpanel" 
                                 aria-labelledby="${appConfig.folderName}-${buildName}-testoutput-tab">
                                 <div class="row mt-3" id="${appConfig.folderName}-${buildName}-testoutput-content"></div>
                             </div>
-                            <div class="tab-pane fade ${testOutputComponents.length === 0 && reportsComponents.length > 0 ? 'show active' : ''}" 
+                            <div class="tab-pane fade ${isActive('reports') ? 'show active' : ''}"
                                 id="${appConfig.folderName}-${buildName}-reports" 
                                 role="tabpanel" 
                                 aria-labelledby="${appConfig.folderName}-${buildName}-reports-tab">
@@ -480,7 +527,53 @@
                     `;
                     
                     tabsContainer.innerHTML = tabsHTML;
-                    
+
+                    // Populate summary tab
+                    const summaryContent = document.getElementById(`${appConfig.folderName}-${buildName}-summary-content`);
+                    if (summaryData != null) {
+                        const { branch, buildDate, buildDuration, buildNumber, server, results } = summaryData;
+
+                        // Create header section
+                        const headerHTML = `
+                            <div class="row mb-3">
+                                <div class="col-md-6">
+                                    <h6 class="card-title">Total Build Duration: <code>${buildDuration}</code> | Branch: <code>${branch}</code></h6>
+                                </div>
+                            </div>
+                        `;
+
+                        // Create cards for each module result
+                        let moduleCards = '';
+                        if (Array.isArray(results)) {
+                            results.forEach(module => {
+                                moduleCards += `
+                                    <div class="col-md-3">
+                                        <div class="border rounded p-3 h-100">
+                                            <h6 class="fw-semibold mb-2">${module.name}</h6>
+                                            <p class="mb-1 text-success">✅ Passed: ${module.passed}</p>
+                                            <p class="mb-1 text-danger">❌ Failed: ${module.failed}</p>
+                                            <p class="mb-0 text-muted">⏱ ${module.duration}</p>
+                                        </div>
+                                    </div>
+                                `;
+                            });
+                        }
+
+                        // Combine everything and render
+                        summaryContent.innerHTML = `
+                            <div class="card shadow-sm border-0 mb-4">
+                                <div class="card-body">
+                                    ${headerHTML}
+                                    <div class="row g-3">
+                                        ${moduleCards || '<div class="col-12 text-muted">No module results found</div>'}
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    } else {
+                        summaryContent.innerHTML = '<div class="col-12">No test summary found</div>';
+                    }
+
                     // Populate test output tab
                     const testOutputContent = document.getElementById(`${appConfig.folderName}-${buildName}-testoutput-content`);
                     if (testOutputComponents.length > 0) {
