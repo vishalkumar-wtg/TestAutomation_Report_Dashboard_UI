@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Results Dashboard</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .app-section {
+            margin-bottom: 2rem;
+            border: 1px solid #dee2e6;
+            border-radius: 0.25rem;
+            padding: 1rem;
+        }
+        .build-row {
+            cursor: pointer;
+        }
+        .build-row:hover {
+            background-color: rgba(0,0,0,0.05);
+        }
+        .component-links {
+            margin-top: 1rem;
+            padding-left: 1rem;
+            padding-right: 1rem;
+            display: none;
+        }
+        .timestamp {
+            font-size: 0.85rem;
+            color: #6c757d;
+        }
+        .pagination {
+            margin-top: 1rem;
+            justify-content: center;
+        }
+        .page-link {
+            cursor: pointer;
+        }
+        .nav-tabs {
+            margin-bottom: 1rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container mt-4">
+        <div class="row">
+            <div class="col-12">
+                <h1 class="mb-4">Test Results Dashboard</h1>
+                <div id="loading" class="text-center">
+                    <div class="spinner-border" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p>Loading test results...</p>
+                </div>
+                <div id="app-container"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS Bundle with Popper -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
+    
+    <script>
+        // Configuration object - edit this to change applications and components
+        const config = {
+            // General settings
+            pagination: {
+                buildsPerPage: 20
+            },
+            // Applications and their components
+            applications: [
+                {
+                    folderName: "galileo",
+                    displayName: "Galileo",
+                    components: [
+                        { folderName: "ADMINISTRATION", displayName: "Administration" },
+                        { folderName: "CORRECT_INSTRUMENT", displayName: "Correct Instrument" },
+                        { folderName: "CONVERSATION", displayName: "Conversation" },
+                        { folderName: "CMP", displayName: "CMP" },
+                        { folderName: "EPRES", displayName: "ePresentations" },
+                        { folderName: "GTEE", displayName: "Guaratees" },
+                        { folderName: "LC", displayName: "Letters of Credit" },
+                        { folderName: "MLA", displayName: "Multi-Level Approvals" },
+                        { folderName: "UBS", displayName: "UBS" },
+                        { folderName: "CUSTOM", displayName: "Custom" }
+                    ]
+                },
+                {
+                    folderName: "cm",
+                    displayName: "Connection Module",
+                    components: [
+                        { folderName: "OWN_USER_GROUP", displayName: "CMA Own User Group" },
+                        { folderName: "OPEN_USER_GROUP", displayName: "Open User Group" },
+                        { folderName: "HYBRID_USER_GROUP", displayName: "Hybrid User Group" },
+                        { folderName: "ADMIN", displayName: "Administration" },
+                        { folderName: "CUSTOM", displayName: "Custom" }
+                    ]
+                }
+            ]
+        };
+
+        // Main function to initialize the dashboard
+        async function initDashboard() {
+            try {
+                const appContainer = document.getElementById('app-container');
+                const loadingIndicator = document.getElementById('loading');
+                
+                // Process each configured application directly from config
+                for (const appConfig of config.applications) {
+                    // Create application section
+                    const appSection = document.createElement('div');
+                    appSection.className = 'app-section';
+                    appSection.innerHTML = `
+                        <h2>${appConfig.displayName}</h2>
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>Build Date</th>
+                                        <th>Build Number</th>
+                                        <th>Server</th>
+                                        <th>Timestamp</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="${appConfig.folderName}-builds"></tbody>
+                            </table>
+                            <div id="${appConfig.folderName}-pagination" class="pagination"></div>
+                        </div>
+                    `;
+                    
+                    appContainer.appendChild(appSection);
+                    
+                    try {
+                        // Load builds for this application
+                        await loadBuildsForApp(appConfig);
+                    } catch (appError) {
+                        console.error(`Error loading builds for ${appConfig.displayName}:`, appError);
+                        document.getElementById(`${appConfig.folderName}-builds`).innerHTML = `
+                            <tr><td colspan="4" class="text-danger">No builds found or error loading builds</td></tr>
+                        `;
+                    }
+                }
+                
+                // Hide loading indicator
+                loadingIndicator.style.display = 'none';
+                
+            } catch (error) {
+                console.error('Error initializing dashboard:', error);
+                document.getElementById('loading').innerHTML = `
+                    <div class="alert alert-danger" role="alert">
+                        Error loading test results: ${error.message}
+                    </div>
+                `;
+            }
+        }
+
+        // Function to load builds for a specific application
+        async function loadBuildsForApp(appConfig) {
+            const appPath = `/${appConfig.folderName}`;
+            let buildsResponse;
+            
+            try {
+                buildsResponse = await fetchDirectoryContents(appPath);
+                if (!buildsResponse || !Array.isArray(buildsResponse)) {
+                    throw new Error('Invalid response format');
+                }
+            } catch (error) {
+                console.error(`Error fetching directory contents for ${appPath}:`, error);
+                document.getElementById(`${appConfig.folderName}-builds`).innerHTML = `
+                    <tr><td colspan="4" class="text-danger">No builds found or directory is empty</td></tr>
+                `;
+                return;
+            }
+            
+            // Filter for directories only
+            const buildDirs = buildsResponse.filter(item => item.is_dir);
+            
+            if (buildDirs.length === 0) {
+                document.getElementById(`${appConfig.folderName}-builds`).innerHTML = `
+                    <tr><td colspan="4">No builds found</td></tr>
+                `;
+                return;
+            }
+            
+            // Sort builds by modification time (newest first)
+            buildDirs.sort((a, b) => 
+                new Date(b.mod_time) - new Date(a.mod_time)
+            );
+            
+            // Store all builds for this app to use with pagination
+            const appState = {
+                builds: buildDirs,
+                currentPage: 1,
+                buildsPerPage: config.pagination.buildsPerPage,
+                totalPages: Math.ceil(buildDirs.length / config.pagination.buildsPerPage)
+            };
+            
+            // Initial render of builds
+            renderBuildsPage(appConfig, appState);
+            
+            // Setup pagination
+            renderPagination(appConfig, appState);
+        }
+
+        // Function to render a specific page of builds
+        function renderBuildsPage(appConfig, appState) {
+            const { builds, currentPage, buildsPerPage } = appState;
+            const startIndex = (currentPage - 1) * buildsPerPage;
+            const endIndex = Math.min(startIndex + buildsPerPage, builds.length);
+            const buildsToShow = builds.slice(startIndex, endIndex);
+            
+            const buildsContainer = document.getElementById(`${appConfig.folderName}-builds`);
+            buildsContainer.innerHTML = '';
+            
+            for (const buildDir of buildsToShow) {
+                // Parse build info from folder name (e.g., "2025-03-03_48-QA_5")
+                const buildName = buildDir.name.replace('/', '');
+                const buildInfo = parseBuildName(buildName);
+                
+                if (!buildInfo) continue;
+                
+                // Create row for this build
+                const buildRow = document.createElement('tr');
+                buildRow.className = 'build-row';
+                buildRow.innerHTML = `
+                    <td>${buildInfo.date}</td>
+                    <td>${buildInfo.buildNumber}</td>
+                    <td>${buildInfo.server}</td>
+                    <td class="timestamp">${new Date(buildDir.mod_time).toLocaleString()}</td>
+                `;
+                
+                // Create container for component links (initially hidden)
+                const componentLinksRow = document.createElement('tr');
+                componentLinksRow.innerHTML = `
+                    <td colspan="4">
+                        <div class="component-links" id="${appConfig.folderName}-${buildName}-components">
+                            <div class="alert alert-info" role="alert" id="${appConfig.folderName}-${buildName}-loading">
+                                <div class="spinner-border spinner-border-sm" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                                <span class="ms-2">Loading component links...</span>
+                            </div>
+                            <div id="${appConfig.folderName}-${buildName}-tabs"></div>
+                        </div>
+                    </td>
+                `;
+                
+                // Toggle component links when clicking on a build row
+                buildRow.addEventListener('click', async () => {
+                    const componentLinks = document.getElementById(`${appConfig.folderName}-${buildName}-components`);
+                    
+                    // Toggle visibility
+                    if (componentLinks.style.display === 'block') {
+                        componentLinks.style.display = 'none';
+                    } else {
+                        componentLinks.style.display = 'block';
+                        
+                        // Lazy-load component links if not already loaded
+                        if (!componentLinks.dataset.loaded) {
+                            await loadComponentLinks(appConfig, buildName);
+                            componentLinks.dataset.loaded = 'true';
+                        }
+                    }
+                });
+                
+                buildsContainer.appendChild(buildRow);
+                buildsContainer.appendChild(componentLinksRow);
+            }
+        }
+
+        // Function to render pagination controls
+        function renderPagination(appConfig, appState) {
+            const { currentPage, totalPages } = appState;
+            const paginationContainer = document.getElementById(`${appConfig.folderName}-pagination`);
+            
+            if (totalPages <= 1) {
+                paginationContainer.innerHTML = '';
+                return;
+            }
+            
+            let paginationHTML = `
+                <nav aria-label="Build pagination">
+                    <ul class="pagination">
+                        <li class="page-item ${currentPage === 1 ? 'disabled' : ''}">
+                            <a class="page-link" data-page="${currentPage - 1}" aria-label="Previous">
+                                <span aria-hidden="true">&laquo;</span>
+                            </a>
+                        </li>
+            `;
+            
+            // Show up to 5 page numbers, centered around current page
+            const startPage = Math.max(1, currentPage - 2);
+            const endPage = Math.min(totalPages, startPage + 4);
+            
+            for (let i = startPage; i <= endPage; i++) {
+                paginationHTML += `
+                    <li class="page-item ${i === currentPage ? 'active' : ''}">
+                        <a class="page-link" data-page="${i}">${i}</a>
+                    </li>
+                `;
+            }
+            
+            paginationHTML += `
+                        <li class="page-item ${currentPage === totalPages ? 'disabled' : ''}">
+                            <a class="page-link" data-page="${currentPage + 1}" aria-label="Next">
+                                <span aria-hidden="true">&raquo;</span>
+                            </a>
+                        </li>
+                    </ul>
+                </nav>
+            `;
+            
+            paginationContainer.innerHTML = paginationHTML;
+            
+            // Add event listeners to pagination links
+            const pageLinks = paginationContainer.querySelectorAll('.page-link');
+            pageLinks.forEach(link => {
+                link.addEventListener('click', (event) => {
+                    event.preventDefault();
+                    const pageNum = parseInt(link.dataset.page);
+                    
+                    if (isNaN(pageNum) || pageNum < 1 || pageNum > totalPages || pageNum === currentPage) {
+                        return;
+                    }
+                    
+                    appState.currentPage = pageNum;
+                    renderBuildsPage(appConfig, appState);
+                    renderPagination(appConfig, appState);
+                });
+            });
+        }
+
+        // Function to load component links for a specific build
+        async function loadComponentLinks(appConfig, buildName) {
+            const buildPath = `/${appConfig.folderName}/${buildName}`;
+            const loadingIndicator = document.getElementById(`${appConfig.folderName}-${buildName}-loading`);
+            const tabsContainer = document.getElementById(`${appConfig.folderName}-${buildName}-tabs`);
+            
+            try {
+                // Try to fetch from both potential locations
+                const testOutputPath = `${buildPath}/test-output`;
+                const reportsPath = `${buildPath}/reports`;
+                
+                // Initialize result containers
+                let testOutputComponents = [];
+                let reportsComponents = [];
+                
+                // First try to get test-output directory
+                try {
+                    const testOutputContents = await fetchDirectoryContents(testOutputPath);
+                    
+                    // Process test-output directories (they contain timestamps in names)
+                    for (const component of appConfig.components) {
+                        // Find test-output subdirectory for this component (with timestamp)
+                        const testOutputDir = testOutputContents.find(item => 
+                            item.is_dir && item.name.startsWith(`${component.folderName} `)
+                        );
+                        
+                        if (testOutputDir) {
+                            try {
+                                // Fetch the HTML file in this directory
+                                const testOutputSubdir = await fetchDirectoryContents(`${testOutputPath}/${testOutputDir.name}`);
+                                const htmlFile = testOutputSubdir.find(file => 
+                                    !file.is_dir && file.name.endsWith('.html')
+                                );
+                                
+                                if (htmlFile) {
+                                    testOutputComponents.push({
+                                        displayName: component.displayName,
+                                        folderName: component.folderName,
+                                        url: `${testOutputPath}/${testOutputDir.name}/${htmlFile.name}`,
+                                        timestamp: testOutputDir.name.replace(`${component.folderName} `, '')
+                                    });
+                                }
+                            } catch (e) {
+                                console.error(`Error fetching test output for ${component.folderName}:`, e);
+                            }
+                        }
+                    }
+                } catch (e) {
+                    console.log(`No test-output directory for ${buildPath}`);
+                }
+                
+                // Then try to get reports directory
+                try {
+                    const reportsContents = await fetchDirectoryContents(reportsPath);
+                    
+                    // Process reports directories
+                    for (const component of appConfig.components) {
+                        // Check for the component in reports directory
+                        const reportDir = reportsContents.find(item =>
+                            item.is_dir && item.name === `${component.folderName}/`
+                        );
+                        
+                        if (reportDir) {
+                            try {
+                                // Fetch the HTML file in this directory
+                                const reportSubdir = await fetchDirectoryContents(`${reportsPath}/${reportDir.name}`);
+                                const htmlFile = reportSubdir.find(file => 
+                                    !file.is_dir && file.name.endsWith('.html')
+                                );
+                                
+                                if (htmlFile) {
+                                    reportsComponents.push({
+                                        displayName: component.displayName,
+                                        folderName: component.folderName,
+                                        url: `${reportsPath}/${reportDir.name}/${htmlFile.name}`
+                                    });
+                                }
+                            } catch (e) {
+                                console.error(`Error fetching report for ${component.folderName}:`, e);
+                            }
+                        }
+                    }
+                } catch (e) {
+                    console.log(`No reports directory for ${buildPath}`);
+                }
+                
+                // Remove loading indicator
+                loadingIndicator.style.display = 'none';
+                
+                // Set up tabs if we have content
+                if (testOutputComponents.length > 0 || reportsComponents.length > 0) {
+                    // Sort components by name for consistent ordering
+                    testOutputComponents.sort((a, b) => a.displayName.localeCompare(b.displayName));
+                    reportsComponents.sort((a, b) => a.displayName.localeCompare(b.displayName));
+                    
+                    // Create tabs
+                    const tabsHTML = `
+                        <ul class="nav nav-tabs" role="tablist">
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link ${testOutputComponents.length > 0 ? 'active' : ''}" 
+                                    id="${appConfig.folderName}-${buildName}-testoutput-tab" 
+                                    data-bs-toggle="tab" 
+                                    data-bs-target="#${appConfig.folderName}-${buildName}-testoutput" 
+                                    type="button" 
+                                    role="tab" 
+                                    aria-controls="testoutput" 
+                                    aria-selected="${testOutputComponents.length > 0 ? 'true' : 'false'}">
+                                    Test Output (${testOutputComponents.length})
+                                </button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link ${testOutputComponents.length === 0 && reportsComponents.length > 0 ? 'active' : ''}" 
+                                    id="${appConfig.folderName}-${buildName}-reports-tab" 
+                                    data-bs-toggle="tab" 
+                                    data-bs-target="#${appConfig.folderName}-${buildName}-reports" 
+                                    type="button" 
+                                    role="tab" 
+                                    aria-controls="reports" 
+                                    aria-selected="${testOutputComponents.length === 0 && reportsComponents.length > 0 ? 'true' : 'false'}">
+                                    Reports (${reportsComponents.length})
+                                </button>
+                            </li>
+                        </ul>
+                        <div class="tab-content">
+                            <div class="tab-pane fade ${testOutputComponents.length > 0 ? 'show active' : ''}" 
+                                id="${appConfig.folderName}-${buildName}-testoutput" 
+                                role="tabpanel" 
+                                aria-labelledby="${appConfig.folderName}-${buildName}-testoutput-tab">
+                                <div class="row mt-3" id="${appConfig.folderName}-${buildName}-testoutput-content"></div>
+                            </div>
+                            <div class="tab-pane fade ${testOutputComponents.length === 0 && reportsComponents.length > 0 ? 'show active' : ''}" 
+                                id="${appConfig.folderName}-${buildName}-reports" 
+                                role="tabpanel" 
+                                aria-labelledby="${appConfig.folderName}-${buildName}-reports-tab">
+                                <div class="row mt-3" id="${appConfig.folderName}-${buildName}-reports-content"></div>
+                            </div>
+                        </div>
+                    `;
+                    
+                    tabsContainer.innerHTML = tabsHTML;
+                    
+                    // Populate test output tab
+                    const testOutputContent = document.getElementById(`${appConfig.folderName}-${buildName}-testoutput-content`);
+                    if (testOutputComponents.length > 0) {
+                        testOutputComponents.forEach(component => {
+                            const col = document.createElement('div');
+                            col.className = 'col-md-4 mb-2';
+                            
+                            const link = document.createElement('a');
+                            link.href = component.url;
+                            link.target = '_blank';
+                            link.className = 'btn btn-outline-primary btn-sm';
+                            link.textContent = `${component.displayName} (${component.timestamp})`;
+                            
+                            col.appendChild(link);
+                            testOutputContent.appendChild(col);
+                        });
+                    } else {
+                        testOutputContent.innerHTML = '<div class="col-12">No test output components found</div>';
+                    }
+                    
+                    // Populate reports tab
+                    const reportsContent = document.getElementById(`${appConfig.folderName}-${buildName}-reports-content`);
+                    if (reportsComponents.length > 0) {
+                        reportsComponents.forEach(component => {
+                            const col = document.createElement('div');
+                            col.className = 'col-md-4 mb-2';
+                            
+                            const link = document.createElement('a');
+                            link.href = component.url;
+                            link.target = '_blank';
+                            link.className = 'btn btn-outline-primary btn-sm';
+                            link.textContent = component.displayName;
+                            
+                            col.appendChild(link);
+                            reportsContent.appendChild(col);
+                        });
+                    } else {
+                        reportsContent.innerHTML = '<div class="col-12">No report components found</div>';
+                    }
+                } else {
+                    tabsContainer.innerHTML = '<div class="alert alert-warning">No component reports found</div>';
+                }
+                
+            } catch (error) {
+                console.error(`Error loading component links for ${buildPath}:`, error);
+                loadingIndicator.style.display = 'none';
+                tabsContainer.innerHTML = `
+                    <div class="alert alert-danger" role="alert">
+                        Error loading component links: ${error.message}
+                    </div>
+                `;
+            }
+        }
+
+        // Helper function to parse build name into its components
+        function parseBuildName(buildName) {
+            // Pattern: YYYY-MM-DD_BuildNumber-ServerName
+            const pattern = /^(\d{4}-\d{2}-\d{2})_(\d+)-(.+)$/;
+            const match = buildName.match(pattern);
+            
+            if (!match) return null;
+            
+            return {
+                date: match[1],
+                buildNumber: match[2],
+                server: match[3]
+            };
+        }
+
+        // Helper function to fetch directory contents as JSON
+        async function fetchDirectoryContents(path) {
+            try {
+                const response = await fetch(path, {
+                    headers: {
+                        'Accept': 'application/json'
+                    }
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`Failed to fetch ${path}: ${response.status} ${response.statusText}`);
+                }
+                
+                return await response.json();
+            } catch (error) {
+                console.error(`Error fetching ${path}:`, error);
+                throw error;
+            }
+        }
+
+        // Initialize the dashboard when the page loads
+        document.addEventListener('DOMContentLoaded', initDashboard);
+    </script>
+</body>
+</html>
