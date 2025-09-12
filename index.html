@@ -84,6 +84,7 @@
                         { folderName: "UBS", displayName: "UBS" },
                         { folderName: "HELP", displayName: "Help" },
                         { folderName: "ADDRESS_BOOK", displayName: "ADDRESS BOOK" },
+                        { folderName: "MIGRATION", displayName: "MIGRATION TOOL" },
                         { folderName: "CUSTOM", displayName: "Custom" }
                     ]
                 },
@@ -375,24 +376,31 @@
                     // Process test-output directories (they contain timestamps in names)
                     for (const component of appConfig.components) {
                         // Find test-output subdirectory for this component (with timestamp)
-                        const testOutputDir = testOutputContents.find(item => 
-                            item.is_dir && item.name.startsWith(`${component.folderName} `)
-                        );
-                        
+                        const testOutputDir = testOutputContents.find(item => {
+                            const nameNorm = item.name.replace(/\/+$/,''); // remove trailing slashes
+                            return item.is_dir && nameNorm.startsWith(component.folderName);
+                        });
+
                         if (testOutputDir) {
                             try {
+                                // Normalize directory name for path and timestamp extraction
+                                const dirNameNorm = testOutputDir.name.replace(/\/+$/,'');
+
                                 // Fetch the HTML file in this directory
-                                const testOutputSubdir = await fetchDirectoryContents(`${testOutputPath}/${testOutputDir.name}`);
-                                const htmlFile = testOutputSubdir.find(file => 
+                                const testOutputSubdir = await fetchDirectoryContents(`${testOutputPath}/${dirNameNorm}`);
+                                const htmlFile = testOutputSubdir.find(file =>
                                     !file.is_dir && file.name.endsWith('.html')
                                 );
-                                
+
                                 if (htmlFile) {
+                                    // Extract timestamp portion more robustly (handles spaces, underscores, dashes)
+                                    const timestamp = dirNameNorm.slice(component.folderName.length).replace(/^[_\s-]+/, '');
+
                                     testOutputComponents.push({
                                         displayName: component.displayName,
                                         folderName: component.folderName,
-                                        url: `${testOutputPath}/${testOutputDir.name}/${htmlFile.name}`,
-                                        timestamp: testOutputDir.name.replace(`${component.folderName} `, '')
+                                        url: `${testOutputPath}/${dirNameNorm}/${htmlFile.name}`,
+                                        timestamp: timestamp || dirNameNorm
                                     });
                                 }
                             } catch (e) {
@@ -410,24 +418,27 @@
                     
                     // Process reports directories
                     for (const component of appConfig.components) {
-                        // Check for the component in reports directory
-                        const reportDir = reportsContents.find(item =>
-                            item.is_dir && item.name === `${component.folderName}/`
-                        );
-                        
+                        // Check for the component in reports directory, normalizing trailing slashes
+                        const reportDir = reportsContents.find(item => {
+                            const nameNorm = item.name.replace(/\/+$/,'');
+                            return item.is_dir && nameNorm === component.folderName;
+                        });
+
                         if (reportDir) {
                             try {
+                                const dirNameNorm = reportDir.name.replace(/\/+$/,'');
+
                                 // Fetch the HTML file in this directory
-                                const reportSubdir = await fetchDirectoryContents(`${reportsPath}/${reportDir.name}`);
-                                const htmlFile = reportSubdir.find(file => 
+                                const reportSubdir = await fetchDirectoryContents(`${reportsPath}/${dirNameNorm}`);
+                                const htmlFile = reportSubdir.find(file =>
                                     !file.is_dir && file.name.endsWith('.html')
                                 );
-                                
+
                                 if (htmlFile) {
                                     reportsComponents.push({
                                         displayName: component.displayName,
                                         folderName: component.folderName,
-                                        url: `${reportsPath}/${reportDir.name}/${htmlFile.name}`
+                                        url: `${reportsPath}/${dirNameNorm}/${htmlFile.name}`
                                     });
                                 }
                             } catch (e) {
@@ -548,13 +559,28 @@
                         let moduleCards = '';
                         if (Array.isArray(results)) {
                             results.forEach(module => {
+                                const passed = Number(module.passed) || 0;
+                                const failed = Number(module.failed) || 0;
+                                const skipped = Number(module.skipped) || 0;
+                                const total = passed + failed + skipped;
+                                const percent = total > 0 ? Math.round((passed / total) * 100) : 0;
+
                                 moduleCards += `
                                     <div class="col-md-3">
                                         <div class="border rounded p-3 h-100">
                                             <h6 class="fw-semibold mb-2">${module.name}</h6>
-                                            <p class="mb-1 text-success">✅ Passed: ${module.passed}</p>
-                                            <p class="mb-1 text-danger">❌ Failed: ${module.failed}</p>
-                                            <p class="mb-0 text-muted">⏱ ${module.duration}</p>
+                                            <div class="mb-2">
+                                                <div class="progress" style="height:18px;">
+                                                    <div class="progress-bar bg-success" role="progressbar" style="width: ${percent}%;" aria-valuenow="${percent}" aria-valuemin="0" aria-valuemax="100">
+                                                        ${percent}%
+                                                    </div>
+                                                </div>
+                                                <small class="text-muted">${passed}/${total} passed</small>
+                                            </div>
+                                            <p class="mb-1 text-success">✅ Passed: ${passed}</p>
+                                            <p class="mb-1 text-danger">❌ Failed: ${failed}</p>
+                                            ${skipped ? `<p class="mb-1 text-secondary">⏭ Skipped: ${skipped}</p>` : ''}
+                                            <p class="mb-0 text-muted">⏱ ${module.duration || 'N/A'}</p>
                                         </div>
                                     </div>
                                 `;
