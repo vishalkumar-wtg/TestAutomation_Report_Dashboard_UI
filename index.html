@@ -39,6 +39,28 @@
         .nav-tabs {
             margin-bottom: 1rem;
         }
+        .header-flex {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 1rem;
+        }
+        .header-flex .left {
+            min-width: 0; /* allow truncation inside flex */
+            overflow: hidden;
+        }
+        .header-flex .truncate {
+            display: inline-block;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            vertical-align: middle;
+            max-width: 60vw; /* adjust as needed */
+        }
+        .header-flex .right {
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
     </style>
 </head>
 <body>
@@ -83,9 +105,9 @@
                         { folderName: "MLA", displayName: "Multi-Level Approvals" },
                         { folderName: "UBS", displayName: "UBS" },
                         { folderName: "HELP", displayName: "Help" },
-                        { folderName: "ADDRESS_BOOK", displayName: "ADDRESS BOOK" },
-                        { folderName: "MIGRATION", displayName: "MIGRATION" },
-                        { folderName: "ONBOARDING", displayName: "ONBOARDING" },
+                        { folderName: "ADDRESS_BOOK", displayName: "Address Book" },
+                        { folderName: "MIGRATION", displayName: "Migration" },
+                        { folderName: "ONBOARDING", displayName: "Onboarding" },
                         { folderName: "CUSTOM", displayName: "Custom" }
                     ]
                 },
@@ -93,7 +115,7 @@
                     folderName: "cm",
                     displayName: "Connection Module",
                     components: [
-                        { folderName: "OWN_USER_GROUP", displayName: "CMA Own User Group" },
+                        { folderName: "OWN_USER_GROUP", displayName: "Own User Group" },
                         { folderName: "OPEN_USER_GROUP", displayName: "Open User Group" },
                         { folderName: "HYBRID_USER_GROUP", displayName: "Hybrid User Group" },
                         { folderName: "ADMIN", displayName: "Administration" },
@@ -506,14 +528,14 @@
                                 </button>
                             </li>
                             <li class="nav-item" role="presentation">
-                                <button class="nav-link ${isActive('reports')}}"
+                                <button class="nav-link ${isActive('reports')}"
                                     id="${appConfig.folderName}-${buildName}-reports-tab" 
                                     data-bs-toggle="tab" 
                                     data-bs-target="#${appConfig.folderName}-${buildName}-reports" 
                                     type="button" 
                                     role="tab" 
                                     aria-controls="reports" 
-                                    aria-selected="${isAriaSelected('reports')}}">
+                                    aria-selected="${isAriaSelected('reports')}">
                                     Custom Report
                                 </button>
                             </li>
@@ -547,11 +569,29 @@
                     if (summaryData != null) {
                         const { branch, buildDate, buildDuration, buildNumber, server, results } = summaryData;
 
+                        let totalPassed = 0;
+                        let totalFailed = 0;
+                        if (Array.isArray(results)) {
+                            results.forEach(m => {
+                                totalPassed += Number(m.passed) || 0;
+                                totalFailed += Number(m.failed) || 0;
+                            });
+                        }
+
                         // Create header section
                         const headerHTML = `
-                            <div class="row mb-3">
-                                <div class="col-md-6">
-                                    <h6 class="card-title">Total Build Duration: <code>${buildDuration}</code> | Branch: <code>${branch}</code></h6>
+                            <div class="header-flex mb-3">
+                                <div class="left">
+                                    <h6 class="card-title mb-0">
+                                        <span class="truncate">Total Build Duration: <code>${buildDuration}</code> | Branch: <code>${branch}</code></span>
+                                    </h6>
+                                </div>
+                                <div class="right text-end">
+                                    <h6 class="card-title mb-0">
+                                        <span class="text-success">Total Passed: <strong>${totalPassed}</strong></span>
+                                        &nbsp;|&nbsp;
+                                        <span class="text-danger">Total Failed: <strong>${totalFailed}</strong></span>
+                                    </h6>
                                 </div>
                             </div>
                         `;
@@ -576,7 +616,7 @@
                                                         ${percent}%
                                                     </div>
                                                 </div>
-                                                <small class="text-muted">${passed}/${total} passed</small>
+                                                <small class="text-muted d-block mt-2">${total} scenarios</small>
                                             </div>
                                             <p class="mb-1 text-success">✅ Passed: ${passed}</p>
                                             <p class="mb-1 text-danger">❌ Failed: ${failed}</p>
