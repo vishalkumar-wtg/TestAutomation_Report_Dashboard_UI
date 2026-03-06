@@ -81,52 +81,16 @@
 
     <!-- Bootstrap JS Bundle with Popper -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
-    
+
     <script>
         // Configuration object - edit this to change applications and components
         const config = {
             // General settings
             pagination: {
-                buildsPerPage: 5
+                buildsPerPage: 10
             },
             // Applications and their components
             applications: [
-                {
-                    folderName: "galileo",
-                    displayName: "Galileo",
-                    components: [
-                        { folderName: "ADMINISTRATION", displayName: "Administration" },
-                        { folderName: "CORRECT_INSTRUMENT", displayName: "Correct Instrument" },
-                        { folderName: "CONVERSATION", displayName: "Conversation" },
-                        { folderName: "CMP", displayName: "CMP" },
-                        { folderName: "EPRES", displayName: "ePresentations" },
-                        { folderName: "GTEE", displayName: "Guarantees" },
-                        { folderName: "LC", displayName: "Letters of Credit" },
-                        { folderName: "MLA", displayName: "Multi-Level Approvals" },
-                        { folderName: "UBS", displayName: "UBS" },
-                        { folderName: "HELP", displayName: "Help" },
-                        { folderName: "ADDRESS_BOOK", displayName: "Address Book" },
-                        { folderName: "APPROVAL", displayName: "Approval" },
-                        { folderName: "MIGRATION", displayName: "Migration" },
-                        { folderName: "ONBOARDING", displayName: "Onboarding" },
-                        { folderName: "CM_ADMIN", displayName: "CM Admin" },
-                        { folderName: "NOTIFICATION", displayName: "Notification" },
-                        { folderName: "SMOKE_TEST", displayName: "Smoke Test" },
-                        { folderName: "CUSTOM", displayName: "Custom Test" }
-                    ]
-                },
-                {
-                    folderName: "cm",
-                    displayName: "Connection Module",
-                    components: [
-                        { folderName: "OWN_USER_GROUP", displayName: "Own User Group" },
-                        { folderName: "OPEN_USER_GROUP", displayName: "Open User Group" },
-                        { folderName: "HYBRID_USER_GROUP", displayName: "Hybrid User Group" },
-                        { folderName: "ADMIN", displayName: "Administration" },
-                        { folderName: "SMOKE_TEST", displayName: "Smoke Test" },
-                        { folderName: "CUSTOM", displayName: "Custom Test" }
-                    ]
-                },
                 {
                     folderName: "wi_efinance",
                     displayName: "Web Interface, MePO and ePOTrader",
@@ -390,9 +354,10 @@
                 // First try to get summary.json
                 let summaryData = null;
                 try {
-                    const summaryResponse = await fetch(`${buildPath}/summary.json`);
+                    const summaryPath = `${buildPath}/summary.json`;
+                    const summaryResponse = await fetch(summaryPath);
                     if (summaryResponse.ok) {
-                        summaryData = await summaryResponse.json(); // parse summary.json if it exists
+                        summaryData = await summaryResponse.json();
                     }
                 } catch (e) {
                     // Ignore errors silently if summary.json is missing
@@ -488,12 +453,10 @@
                     testOutputComponents.sort((a, b) => a.displayName.localeCompare(b.displayName));
                     reportsComponents.sort((a, b) => a.displayName.localeCompare(b.displayName));
 
-                    // Determine which tab should be active (priority order: summary > testOutput > reports)
+                    // Determine which tab should be active (priority order: summary > reports)
                     let activeTab = null;
                     if (summaryData != null) {
                         activeTab = 'summary';
-                    } else if (testOutputComponents.length > 0) {
-                        activeTab = 'testoutput';
                     } else if (reportsComponents.length > 0) {
                         activeTab = 'reports';
                     }
@@ -522,18 +485,6 @@
                                 </button>
                             </li>
                             <li class="nav-item" role="presentation">
-                                <button class="nav-link ${isActive('testoutput')}"
-                                    id="${appConfig.folderName}-${buildName}-testoutput-tab" 
-                                    data-bs-toggle="tab" 
-                                    data-bs-target="#${appConfig.folderName}-${buildName}-testoutput" 
-                                    type="button" 
-                                    role="tab" 
-                                    aria-controls="testoutput" 
-                                    aria-selected="${isAriaSelected('testoutput')}">
-                                    Test Report
-                                </button>
-                            </li>
-                            <li class="nav-item" role="presentation">
                                 <button class="nav-link ${isActive('reports')}"
                                     id="${appConfig.folderName}-${buildName}-reports-tab" 
                                     data-bs-toggle="tab" 
@@ -542,7 +493,7 @@
                                     role="tab" 
                                     aria-controls="reports" 
                                     aria-selected="${isAriaSelected('reports')}">
-                                    Custom Report
+                                    Test Reports
                                 </button>
                             </li>
                         </ul>
@@ -552,12 +503,6 @@
                                 role="tabpanel"
                                 aria-labelledby="${appConfig.folderName}-${buildName}-summary-tab">
                                 <div class="row mt-3" id="${appConfig.folderName}-${buildName}-summary-content"></div>
-                            </div>
-                            <div class="tab-pane fade ${isActive('testoutput') ? 'show active' : ''}}"
-                                id="${appConfig.folderName}-${buildName}-testoutput" 
-                                role="tabpanel" 
-                                aria-labelledby="${appConfig.folderName}-${buildName}-testoutput-tab">
-                                <div class="row mt-3" id="${appConfig.folderName}-${buildName}-testoutput-content"></div>
                             </div>
                             <div class="tab-pane fade ${isActive('reports') ? 'show active' : ''}"
                                 id="${appConfig.folderName}-${buildName}-reports" 
@@ -649,26 +594,6 @@
                         summaryContent.innerHTML = '<div class="col-12">No test summary found</div>';
                     }
 
-                    // Populate test output tab
-                    const testOutputContent = document.getElementById(`${appConfig.folderName}-${buildName}-testoutput-content`);
-                    if (testOutputComponents.length > 0) {
-                        testOutputComponents.forEach(component => {
-                            const col = document.createElement('div');
-                            col.className = 'col-md-4 mb-2';
-                            
-                            const link = document.createElement('a');
-                            link.href = component.url;
-                            link.target = '_blank';
-                            link.className = 'btn btn-outline-primary btn-sm';
-                            link.textContent = `${component.displayName} (${component.timestamp})`;
-                            
-                            col.appendChild(link);
-                            testOutputContent.appendChild(col);
-                        });
-                    } else {
-                        testOutputContent.innerHTML = '<div class="col-12">No test output components found</div>';
-                    }
-                    
                     // Populate reports tab
                     const reportsContent = document.getElementById(`${appConfig.folderName}-${buildName}-reports-content`);
                     if (reportsComponents.length > 0) {
